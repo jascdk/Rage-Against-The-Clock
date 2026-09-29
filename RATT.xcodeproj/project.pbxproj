@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		16788569306C27AE00517B31 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 16788568306C27AE00517B31 /* WidgetKit.framework */; };
+		1678856B306C27AE00517B31 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1678856A306C27AE00517B31 /* SwiftUI.framework */; };
+		16788578306C27B100517B31 /* RATTWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 16788566306C27AE00517B31 /* RATTWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		16788546306C266B00517B31 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,17 +27,61 @@
 			remoteGlobalIDString = 16788537306C266700517B31;
 			remoteInfo = RATT;
 		};
+		16788576306C27B100517B31 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 16788530306C266700517B31 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 16788565306C27AE00517B31;
+			remoteInfo = RATTWidgetExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		1678857D306C27B100517B31 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				16788578306C27B100517B31 /* RATTWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		16788538306C266700517B31 /* RATT.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RATT.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		16788545306C266B00517B31 /* RATTTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RATTTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1678854F306C266B00517B31 /* RATTUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RATTUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		16788566306C27AE00517B31 /* RATTWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RATTWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		16788568306C27AE00517B31 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		1678856A306C27AE00517B31 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		16788579306C27B100517B31 /* Exceptions for "RATTWidget" folder in "RATTWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 16788565306C27AE00517B31 /* RATTWidgetExtension */;
+		};
+		16788595306C295B00517B31 /* Exceptions for "RATT" folder in "RATT" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 16788537306C266700517B31 /* RATT */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		1678853A306C266700517B31 /* RATT */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				16788595306C295B00517B31 /* Exceptions for "RATT" folder in "RATT" target */,
+			);
 			path = RATT;
 			sourceTree = "<group>";
 		};
@@ -43,6 +93,14 @@
 		16788552306C266B00517B31 /* RATTUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = RATTUITests;
+			sourceTree = "<group>";
+		};
+		1678856C306C27AE00517B31 /* RATTWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				16788579306C27B100517B31 /* Exceptions for "RATTWidget" folder in "RATTWidgetExtension" target */,
+			);
+			path = RATTWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,6 +127,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		16788563306C27AE00517B31 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1678856B306C27AE00517B31 /* SwiftUI.framework in Frameworks */,
+				16788569306C27AE00517B31 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -78,6 +145,8 @@
 				1678853A306C266700517B31 /* RATT */,
 				16788548306C266B00517B31 /* RATTTests */,
 				16788552306C266B00517B31 /* RATTUITests */,
+				1678856C306C27AE00517B31 /* RATTWidget */,
+				16788567306C27AE00517B31 /* Frameworks */,
 				16788539306C266700517B31 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,8 +157,18 @@
 				16788538306C266700517B31 /* RATT.app */,
 				16788545306C266B00517B31 /* RATTTests.xctest */,
 				1678854F306C266B00517B31 /* RATTUITests.xctest */,
+				16788566306C27AE00517B31 /* RATTWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		16788567306C27AE00517B31 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				16788568306C27AE00517B31 /* WidgetKit.framework */,
+				1678856A306C27AE00517B31 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -102,10 +181,12 @@
 				16788534306C266700517B31 /* Sources */,
 				16788535306C266700517B31 /* Frameworks */,
 				16788536306C266700517B31 /* Resources */,
+				1678857D306C27B100517B31 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				16788577306C27B100517B31 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				1678853A306C266700517B31 /* RATT */,
@@ -163,6 +244,28 @@
 			productReference = 1678854F306C266B00517B31 /* RATTUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		16788565306C27AE00517B31 /* RATTWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1678857A306C27B100517B31 /* Build configuration list for PBXNativeTarget "RATTWidgetExtension" */;
+			buildPhases = (
+				16788562306C27AE00517B31 /* Sources */,
+				16788563306C27AE00517B31 /* Frameworks */,
+				16788564306C27AE00517B31 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				1678856C306C27AE00517B31 /* RATTWidget */,
+			);
+			name = RATTWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = RATTWidgetExtension;
+			productReference = 16788566306C27AE00517B31 /* RATTWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -184,6 +287,9 @@
 						CreatedOnToolsVersion = 16.4;
 						TestTargetID = 16788537306C266700517B31;
 					};
+					16788565306C27AE00517B31 = {
+						CreatedOnToolsVersion = 16.4;
+					};
 				};
 			};
 			buildConfigurationList = 16788533306C266700517B31 /* Build configuration list for PBXProject "RATT" */;
@@ -203,6 +309,7 @@
 				16788537306C266700517B31 /* RATT */,
 				16788544306C266B00517B31 /* RATTTests */,
 				1678854E306C266B00517B31 /* RATTUITests */,
+				16788565306C27AE00517B31 /* RATTWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +330,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		1678854D306C266B00517B31 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		16788564306C27AE00517B31 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +367,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		16788562306C27AE00517B31 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -265,6 +386,11 @@
 			isa = PBXTargetDependency;
 			target = 16788537306C266700517B31 /* RATT */;
 			targetProxy = 16788550306C266B00517B31 /* PBXContainerItemProxy */;
+		};
+		16788577306C27B100517B31 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 16788565306C27AE00517B31 /* RATTWidgetExtension */;
+			targetProxy = 16788576306C27B100517B31 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -400,11 +526,17 @@
 				DEVELOPMENT_TEAM = 4X5LTA8NBP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RATT/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RATT;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Bruges til at forbinde til din RATT-pedal";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -412,9 +544,13 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jascdk.RATT;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -428,11 +564,17 @@
 				DEVELOPMENT_TEAM = 4X5LTA8NBP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RATT/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RATT;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Bruges til at forbinde til din RATT-pedal";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -440,9 +582,13 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jascdk.RATT;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -518,6 +664,62 @@
 			};
 			name = Release;
 		};
+		1678857B306C27B100517B31 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4X5LTA8NBP;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RATTWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RATTWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jascdk.RATT.RATTWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1678857C306C27B100517B31 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4X5LTA8NBP;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RATTWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RATTWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jascdk.RATT.RATTWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -553,6 +755,15 @@
 			buildConfigurations = (
 				16788560306C266B00517B31 /* Debug */,
 				16788561306C266B00517B31 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1678857A306C27B100517B31 /* Build configuration list for PBXNativeTarget "RATTWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1678857B306C27B100517B31 /* Debug */,
+				1678857C306C27B100517B31 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
