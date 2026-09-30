@@ -9,6 +9,7 @@ import UserNotifications
 @main
 struct RATTApp: App {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    @AppStorage("appearanceMode") private var appearanceRaw: String = AppearanceMode.system.rawValue
 
     // Den eneste BluetoothManager i appen. Alle views bruger @EnvironmentObject.
     @StateObject private var bluetooth = BluetoothManager()
@@ -31,6 +32,7 @@ struct RATTApp: App {
             ContentView()
                 .environmentObject(bluetooth)
                 .environmentObject(profileStore)
+                .preferredColorScheme(AppearanceMode(rawValue: appearanceRaw)?.colorScheme)
                 .sheet(isPresented: onboardingBinding) {
                     OnboardingView(isPresented: onboardingBinding)
                         .environmentObject(bluetooth)

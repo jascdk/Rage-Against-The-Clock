@@ -1,6 +1,6 @@
 // ============================================================
 //  Rage Against The Time – gig-timer pedal (ESP32-C3)
-//  Protokol v2.3
+//  Protokol v2.5
 //
 //  BLE service 6f8d0100-...
 //    0101  COMMAND  (write)         "action:value", fx "start", "duration:1800", "time:20:15:30"
@@ -18,6 +18,13 @@
 //    OTA_DATA   6f8d0104  write / write without response  (rå firmware-bytes)
 //    OTA_STATUS 6f8d0105  read + notify                    (version, fremdrift, fejl)
 //    Kommandoer: ota:begin:<bytes>, ota:end, ota:abort
+//
+//  Nyt i 2.4: standbyanim:on/off. I standby (skærmen slukket) glider en enkelt decimalprik stille frem og
+//    tilbage over de slukkede displays, og lysstyrken sænkes. Config: "sb".
+//
+//  Nyt i 2.5: diagnostik. To read-only characteristics, som appen læser:
+//    DIAG 6f8d0106  temperatur, oppetid, heap, nulstillingsårsag, kommandotællere
+//    INFO 6f8d0107  MAC, chip, CPU, flash, partition, byggedato, firmwareversion
 //    Config: "ea" (slut-klokkeslot aktivt), "esc" (LED-eskalering), "sa" (automatisk start venter).
 //            "dur" er den effektive varighed.
 //
@@ -36,8 +43,14 @@
 
 #include <Update.h>          // OTA-opdatering
 #include "esp_ota_ops.h"
+#include "esp_system.h"
+#if __has_include("esp_mac.h")
+#include "esp_mac.h"
+#endif
 
-#define FW_VERSION "2.5.0"   // hæv ved hver ny udgivelse
+#define FW_VERSION "2.7.0"   // hæv ved hver ny udgivelse
+#define STANDBY_STEP_MS 650      // standby: tid pr. skridt for prikken der glider hen over displayet
+#define STANDBY_BRIGHTNESS 2     // standby: højeste lysstyrke (0-7), så det er roligt at se på
 
 #ifndef HAS_STATUS_LED
 #define HAS_STATUS_LED 1
@@ -69,6 +82,8 @@ static const char* STATUS_UUID  = "6f8d0102-2b44-4c1c-a7f9-7d9d2f734301";
 static const char* CONFIG_UUID  = "6f8d0103-2b44-4c1c-a7f9-7d9d2f734301";
 static const char* OTA_DATA_UUID   = "6f8d0104-2b44-4c1c-a7f9-7d9d2f734301";
 static const char* OTA_STATUS_UUID = "6f8d0105-2b44-4c1c-a7f9-7d9d2f734301";
+static const char* DIAG_UUID       = "6f8d0106-2b44-4c1c-a7f9-7d9d2f734301";
+static const char* INFO_UUID       = "6f8d0107-2b44-4c1c-a7f9-7d9d2f734301";
 
 TM1637Display display1(CLK, DIO_DISPLAY_1);
 TM1637Display display2(CLK, DIO_DISPLAY_2);
@@ -134,6 +149,7 @@ int brightness1 = 7;          // 0-7, uret
 int brightness2 = 7;          // 0-7, timeren
 int ledBrightness = 50;       // 0-100
 bool ledEscalation = true;    // farve-eskalering på status-LED
+bool standbyAnim = true;      // standby: prik der glider frem og tilbage i stedet for helt slukket display
 bool screensaverEnabled = true;
 int screenSaverMinutes = 2;
 uint32_t lastInteractionTime = 0;
@@ -170,6 +186,11 @@ volatile bool otaActive = false;   // en firmware-overførsel er i gang
 bool otaShowPrep = false;          // viser "UP--" mens flash slettes
 uint32_t otaTotal = 0;             // forventet filstørrelse
 uint32_t otaReceived = 0;          // bytes skrevet til flash
+
+// ======= Diagnostik =======
+float diagTempC = 0.0f;
+uint32_t diagHeap = 0, diagMinHeap = 0, diagLastMs = 0;
+volatile uint32_t cmdReceived = 0, cmdDropped = 0, cmdRejected = 0;   // BLE-kommandoer: modtaget / tabt (kø fuld) / afvist
 
 // ======= BLE state =======
 BLEServer* bleServer = nullptr;
@@ -220,13 +241,18 @@ uint8_t rotateSegment180(uint8_t seg) {
   if (raw & (1 << 4)) f |= (1 << 1);
   if (raw & (1 << 5)) f |= (1 << 2);
   if (raw & (1 << 6)) f |= (1 << 6);
-  return f;
+  return f | (seg & 0x80);          // decimalpunktet følger cifferet (sidder fast på modulet)
 }
 
 void applyDisplayBrightness() {
   // brightness1 hører til uret, brightness2 til timeren, uanset hvilket fysisk display der bruges
-  display1.setBrightness(swapDisplays ? brightness2 : brightness1);
-  display2.setBrightness(swapDisplays ? brightness1 : brightness2);
+  int bClock = brightness1, bTimer = brightness2;
+  if (screensaverActive && standbyAnim) {                    // standby: dæmp de displays, der viser prikken
+    bTimer = min(bTimer, STANDBY_BRIGHTNESS);
+    if (!clockAlwaysOn) bClock = min(bClock, STANDBY_BRIGHTNESS);
+  }
+  display1.setBrightness(swapDisplays ? bTimer : bClock);
+  display2.setBrightness(swapDisplays ? bClock : bTimer);
   displayNeedsForceUpdate = true;   // setBrightness virker først ved næste setSegments
 }
 
@@ -248,7 +274,7 @@ void applyLedBrightness() {
 void writePhysicalDisplay(PhysDisplay& p, const uint8_t segs[4], bool colon) {
   uint8_t f[4];
   for (int i = 0; i < 4; i++) {
-    f[i] = displayFlipped ? (rotateSegment180(segs[3 - i]) & 0x7F) : (segs[i] & 0x7F);
+    f[i] = displayFlipped ? rotateSegment180(segs[3 - i]) : segs[i];   // bit 7 = decimalprik
   }
   if (colon) f[1] |= 0x80;
 
@@ -274,9 +300,17 @@ void renderDisplays(const uint8_t clockSegs[4], bool clockColon, const uint8_t t
   displayNeedsForceUpdate = false;   // ryd flaget, ellers virker cachen aldrig
 }
 
+// Standby: én decimalprik (bit 7) glider stille 0,1,2,3,2,1,0... hen over displayet
+static void standbySweep(uint8_t segs[4]) {
+  static const uint8_t seq[6] = {0, 1, 2, 3, 2, 1};
+  uint8_t pos = seq[(millis() / STANDBY_STEP_MS) % 6];
+  for (int i = 0; i < 4; i++) segs[i] = (i == pos) ? 0x80 : 0;
+}
+
 void prepareClockData() {
   if (screensaverActive && !clockAlwaysOn) {
     for (int i = 0; i < 4; i++) currentClockSegs[i] = 0;
+    if (standbyAnim) standbySweep(currentClockSegs);
     currentClockColon = false;
     return;
   }
@@ -294,6 +328,7 @@ void prepareClockData() {
 void prepareTimerData(long seconds) {
   if (screensaverActive) {
     for (int i = 0; i < 4; i++) currentTimerSegs[i] = 0;
+    if (standbyAnim) standbySweep(currentTimerSegs);
     currentTimerColon = false;
     return;
   }
@@ -567,6 +602,7 @@ void savePrefs() {
   prefs.putInt("bright2", brightness2);
   prefs.putInt("ledBright", ledBrightness);
   prefs.putBool("ledEsc", ledEscalation);
+  prefs.putBool("standbyAnim", standbyAnim);
   prefs.putBool("scrEnabled", screensaverEnabled);
   prefs.putInt("scrMins", screenSaverMinutes);
   prefs.putBool("flipped", displayFlipped);
@@ -587,6 +623,7 @@ void loadPrefs() {
   brightness2 = constrain(prefs.getInt("bright2", 7), 0, 7);
   ledBrightness = constrain(prefs.getInt("ledBright", 50), 0, 100);
   ledEscalation = prefs.getBool("ledEsc", true);
+  standbyAnim = prefs.getBool("standbyAnim", true);
   screensaverEnabled = prefs.getBool("scrEnabled", true);
   screenSaverMinutes = constrain(prefs.getInt("scrMins", 2), 1, 60);
   displayFlipped = prefs.getBool("flipped", false);
@@ -608,11 +645,11 @@ void buildConfig(char* out, size_t n) {
   snprintf(out, n,
     "{\"mode\":\"%s\",\"dur\":%ld,\"b1\":%d,\"b2\":%d,\"led\":%d,\"warn\":%d,\"ur\":%d,"
     "\"mur\":%d,\"flip\":%d,\"clk\":%d,\"swap\":%d,\"scr\":%d,\"scrm\":%d,\"ts\":%d,"
-    "\"ea\":%d,\"esc\":%d,\"sa\":%d}",
+    "\"ea\":%d,\"esc\":%d,\"sa\":%d,\"sb\":%d}",
     getTimerModeName(), effectiveDuration(), brightness1, brightness2, ledBrightness, warningTime,
     underRun ? 1 : 0, maxUnderRunMinutes, displayFlipped ? 1 : 0, clockAlwaysOn ? 1 : 0,
     swapDisplays ? 1 : 0, screensaverEnabled ? 1 : 0, screenSaverMinutes, clockSet ? 1 : 0,
-    endAtActive ? 1 : 0, ledEscalation ? 1 : 0, startAtActive ? 1 : 0);
+    endAtActive ? 1 : 0, ledEscalation ? 1 : 0, startAtActive ? 1 : 0, standbyAnim ? 1 : 0);
 }
 
 void updateBleStatus() {
@@ -813,6 +850,62 @@ class OtaStatusCallbacks : public BLECharacteristicCallbacks {
 };
 
 // ============================================================
+//  Diagnostik: DIAG (dynamisk) og INFO (statisk). Begge kan læses af appen.
+//  Temperatur og heap opdateres i loop() en gang i sekundet, så BLE-callbacken kun formaterer tal.
+// ============================================================
+static void diagUpdate() {
+  diagTempC = temperatureRead();               // chippens kernetemperatur (ikke rumtemperatur)
+  diagHeap = ESP.getFreeHeap();
+  diagMinHeap = ESP.getMinFreeHeap();
+}
+
+static const char* resetReasonText() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:   return "poweron";
+    case ESP_RST_EXT:       return "ext";
+    case ESP_RST_SW:        return "sw";
+    case ESP_RST_PANIC:     return "panic";
+    case ESP_RST_INT_WDT:   return "intwdt";
+    case ESP_RST_TASK_WDT:  return "taskwdt";
+    case ESP_RST_WDT:       return "wdt";
+    case ESP_RST_DEEPSLEEP: return "deepsleep";
+    case ESP_RST_BROWNOUT:  return "brownout";
+    default:                return "other";
+  }
+}
+
+class DiagCallbacks : public BLECharacteristicCallbacks {
+  void onRead(BLECharacteristic* characteristic) override {
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+             "{\"tc\":%.1f,\"up\":%lu,\"hp\":%lu,\"hm\":%lu,\"rr\":\"%s\",\"cr\":%lu,\"cd\":%lu,\"cx\":%lu}",
+             diagTempC,
+             (unsigned long)(millis() / 1000UL),
+             (unsigned long)diagHeap, (unsigned long)diagMinHeap,
+             resetReasonText(),
+             (unsigned long)cmdReceived, (unsigned long)cmdDropped, (unsigned long)cmdRejected);
+    characteristic->setValue((uint8_t*)buf, strlen(buf));
+  }
+};
+
+class InfoCallbacks : public BLECharacteristicCallbacks {
+  void onRead(BLECharacteristic* characteristic) override {
+    uint8_t mac[6] = {0};
+    esp_read_mac(mac, ESP_MAC_BT);
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    char buf[200];
+    snprintf(buf, sizeof(buf),
+             "{\"mac\":\"%02X:%02X:%02X:%02X:%02X:%02X\",\"ch\":\"%s\",\"rev\":%d,\"cpu\":%d,"
+             "\"fl\":%lu,\"ss\":%lu,\"pt\":\"%s\",\"bd\":\"%s %s\",\"fw\":\"%s\"}",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+             ESP.getChipModel(), (int)ESP.getChipRevision(), (int)getCpuFrequencyMhz(),
+             (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getSketchSize(),
+             running ? running->label : "?", __DATE__, __TIME__, FW_VERSION);
+    characteristic->setValue((uint8_t*)buf, strlen(buf));
+  }
+};
+
+// ============================================================
 //  BLE: kommandoer (kører i loop()-tasken)
 // ============================================================
 static bool parseBool(const String& v) { return v == "1" || v == "on" || v == "true"; }
@@ -960,6 +1053,7 @@ bool handleBleCommand(const String& input) {
     return true;
   }
   if (action == "ledesc")      { ledEscalation = parseBool(value); markSettingsChanged(); return true; }
+  if (action == "standbyanim") { standbyAnim = parseBool(value); applyDisplayBrightness(); markSettingsChanged(); return true; }
   if (action == "clockalways") { clockAlwaysOn = parseBool(value); displayNeedsForceUpdate = true; markSettingsChanged(); return true; }
   if (action == "flip")        { displayFlipped = parseBool(value); displayNeedsForceUpdate = true; markSettingsChanged(); return true; }
   if (action == "swapdisplays") {
@@ -1005,7 +1099,8 @@ class TimerBleCommandCallbacks : public BLECharacteristicCallbacks {
     if (len >= sizeof(cmd.text)) len = sizeof(cmd.text) - 1;
     memcpy(cmd.text, raw.c_str(), len);
     cmd.text[len] = 0;
-    xQueueSend(cmdQueue, &cmd, 0);
+    cmdReceived++;
+    if (xQueueSend(cmdQueue, &cmd, 0) != pdTRUE) cmdDropped++;
   }
 };
 
@@ -1042,6 +1137,13 @@ void initBle() {
     snprintf(info, sizeof(info), "{\"fw\":\"%s\",\"ota\":1,\"max\":0,\"up\":0}", FW_VERSION);
     bleOtaStatus->setValue((uint8_t*)info, strlen(info));
   }
+
+  BLECharacteristic* diagChar = service->createCharacteristic(DIAG_UUID, BLECharacteristic::PROPERTY_READ);
+  diagChar->setCallbacks(new DiagCallbacks());
+  diagChar->setValue((uint8_t*)"{}", 2);
+  BLECharacteristic* infoChar = service->createCharacteristic(INFO_UUID, BLECharacteristic::PROPERTY_READ);
+  infoChar->setCallbacks(new InfoCallbacks());
+  infoChar->setValue((uint8_t*)"{}", 2);
 
   char buf[192];
   snprintf(buf, sizeof(buf), "{\"r\":0,\"t\":%ld,\"d\":0}", remainingTimeSigned);
@@ -1080,6 +1182,7 @@ void setup() {
 
   refreshAllDisplays();
   updateStatusLed();
+  diagUpdate();
   initBle();
 }
 
@@ -1115,7 +1218,7 @@ void loop() {
   // 1. Kommandoer fra BLE
   BleCmd cmd;
   while (xQueueReceive(cmdQueue, &cmd, 0) == pdTRUE) {
-    handleBleCommand(String(cmd.text));
+    if (!handleBleCommand(String(cmd.text))) cmdRejected++;
   }
   now = millis();   // kommandoer kan blokere i mange sekunder (OTA-klargøring), så tiden opdateres
 
@@ -1174,6 +1277,13 @@ void loop() {
     }
   }
 
+  // 6b. Standby starter/slutter: skift til dæmpet/normal lysstyrke
+  static bool prevStandby = false;
+  if (screensaverActive != prevStandby) {
+    prevStandby = screensaverActive;
+    applyDisplayBrightness();
+  }
+
   // 7. Identify-visning ved skift af displays
   if (identifyActive && (int32_t)(now - identifyUntilMs) >= 0) {
     identifyActive = false;
@@ -1189,6 +1299,12 @@ void loop() {
 #ifdef CONFIG_APP_ROLLBACK_ENABLE
     esp_ota_mark_app_valid_cancel_rollback();
 #endif
+  }
+
+  // 7c. Diagnostik: opdater temperatur og heap hvert sekund (læses af BLE-callbacken)
+  if (now - diagLastMs >= 1000UL) {
+    diagLastMs = now;
+    diagUpdate();
   }
 
   // 8. Output

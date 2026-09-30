@@ -18,6 +18,10 @@ struct ContentView: View {
     @State private var showSideMenu = false
     @State private var showTimeSetup = false
     @State private var showFirmware = false
+    @State private var showDiagnostics = false
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("appearanceMode") private var appearanceRaw: String = AppearanceMode.system.rawValue
+    @AppStorage("advancedMode") private var advancedMode: Bool = false
 
     @State private var editingPresetNumber: Int? = nil
     @State private var editPresetText = ""
@@ -103,6 +107,7 @@ struct ContentView: View {
             TimeSetupSheet(
                 maxMinutes: maxMinutes,
                 isRunning: bluetooth.isTimerRunning,
+                allowEndTime: advancedMode,
                 onSetDuration: { mins in
                     bluetooth.sendCommand("duration:\(mins * 60)")
                 },
@@ -113,6 +118,10 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showFirmware) {
             FirmwareUpdateView(updater: bluetooth.firmware)
+                .environmentObject(bluetooth)
+        }
+        .sheet(isPresented: $showDiagnostics) {
+            DiagnosticsView(model: bluetooth.diagnostics)
                 .environmentObject(bluetooth)
         }
         .alert("Rediger præset (minutter)", isPresented: $showEditPresetAlert) {
@@ -141,8 +150,15 @@ struct ContentView: View {
 
     private var mainContent: some View {
         ZStack {
+            LinearGradient(
+                colors: [Color(uiColor: .systemBackground), Color(uiColor: .secondarySystemBackground)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
             statusColor
-                .opacity(isPulsing ? 0.25 : 0.08)
+                .opacity(isPulsing ? (colorScheme == .dark ? 0.25 : 0.34) : (colorScheme == .dark ? 0.08 : 0.16))
                 .blur(radius: 60)
                 .ignoresSafeArea()
                 .animation(
@@ -157,8 +173,10 @@ struct ContentView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
 
-                ProfileChip()
-                    .padding(.top, 8)
+                if advancedMode {
+                    ProfileChip()
+                        .padding(.top, 8)
+                }
 
                 bluetoothHelpView
                     .padding(.horizontal, 20)
@@ -253,7 +271,7 @@ struct ContentView: View {
     private var timerRingView: some View {
         ZStack {
             Circle()
-                .stroke(statusColor.opacity(0.1), lineWidth: 26)
+                .stroke(statusColor.opacity(colorScheme == .dark ? 0.10 : 0.16), lineWidth: 26)
 
             Circle()
                 .trim(from: 0, to: CGFloat(progress))
@@ -327,9 +345,13 @@ struct ContentView: View {
 
             // Tidsindstilling er tilgængelig under kørsel, så sluttidspunktet kan justeres midt i et sæt
             customPresetButton
-                .disabled(!bluetooth.isConnected)
-                .opacity(bluetooth.isConnected ? 1.0 : 0.4)
+                .disabled(!customButtonEnabled)
+                .opacity(customButtonEnabled ? 1.0 : 0.4)
         }
+    }
+
+    private var customButtonEnabled: Bool {
+        bluetooth.isConnected && (advancedMode || !bluetooth.isTimerRunning)
     }
 
     private func presetLabel(_ minutes: Int) -> String {
@@ -449,17 +471,6 @@ struct ContentView: View {
 
                         warningSection
 
-                        settingCard {
-                            settingToggle("Ur altid tændt",
-                                          "Viser uret på Display 1 selv ved inaktivitet",
-                                          isOn: bluetooth.clockAlwaysOn,
-                                          command: "clockalways")
-                        }
-
-                        underRunSection
-
-                        screensaverSection
-
                         SliderCard(title: "Lysstyrke Display 1 (Ur)", icon: "clock.fill",
                                    value: bluetooth.brightness1, range: 0...7, step: 1, suffix: "/7",
                                    tint: statusColor) { v in
@@ -476,15 +487,37 @@ struct ContentView: View {
                         }
                         .disabled(!bluetooth.isConnected)
 
-                        ledSection
+                        appearanceSection
 
-                        hardwareSection
+                        advancedModeCard
 
-                        firmwareSection
+                        if advancedMode {
+                            advancedSectionHeader
 
-                        appSection
+                            settingCard {
+                                settingToggle("Ur altid tændt",
+                                              "Viser uret på Display 1 selv ved inaktivitet",
+                                              isOn: bluetooth.clockAlwaysOn,
+                                              command: "clockalways")
+                            }
+
+                            underRunSection
+
+                            screensaverSection
+
+                            ledSection
+
+                            hardwareSection
+
+                            firmwareSection
+
+                            diagnosticsSection
+
+                            appSection
+                        }
                     }
                     .padding(.vertical, 10)
+                    .animation(.easeInOut(duration: 0.25), value: advancedMode)
                 }
 
                 Spacer()
@@ -590,6 +623,11 @@ struct ContentView: View {
                         Text("10 min").tag(10)
                     }
                     .pickerStyle(.segmented)
+
+                    settingToggle("Prikker i standby",
+                                  "En lille prik glider stille frem og tilbage, når skærmen er slukket",
+                                  isOn: bluetooth.standbyAnimation,
+                                  command: "standbyanim")
                 }
             }
         }
@@ -611,6 +649,49 @@ struct ContentView: View {
                 bluetooth.sendCommand("ledbrightness:\(v)")
             }
             .disabled(!bluetooth.isConnected)
+        }
+    }
+
+    private var advancedModeCard: some View {
+        Toggle(isOn: $advancedMode) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Avanceret tilstand")
+                    .font(.system(size: 14, weight: .bold))
+                Text("Viser gig-profiler, slut-klokkeslot og automatisk start, under-run, LED-farveskift, firmware og flere ekstra indstillinger")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .tint(statusColor)
+        .onChange(of: advancedMode) { _, _ in triggerHaptic(.light) }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .tertiarySystemFill))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var advancedSectionHeader: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+            Text("AVANCERET")
+        }
+        .font(.system(size: 10, weight: .bold, design: .monospaced))
+        .foregroundStyle(.secondary)
+        .padding(.top, 4)
+    }
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("UDSEENDE")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+
+            Picker("Udseende", selection: $appearanceRaw) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Text(mode.title).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
         }
     }
 
@@ -642,6 +723,31 @@ struct ContentView: View {
                     .font(.system(size: 14, weight: .bold))
                 Spacer()
                 Text(bluetooth.firmware.deviceVersion.map { "v\($0)" } ?? "–")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity)
+            .background(Color(uiColor: .tertiarySystemFill))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+        .disabled(!bluetooth.isConnected)
+    }
+
+    private var diagnosticsSection: some View {
+        Button {
+            closeMenu()
+            showDiagnostics = true
+        } label: {
+            HStack {
+                Label("Diagnostik", systemImage: "waveform.path.ecg")
+                    .font(.system(size: 14, weight: .bold))
+                Spacer()
+                Text(bluetooth.diagnostics.rssi.map { "\($0) dBm" } ?? "–")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundStyle(.secondary)
                 Image(systemName: "chevron.right")
@@ -776,6 +882,7 @@ private struct TimeSetupSheet: View {
 
     let maxMinutes: Int
     let isRunning: Bool
+    let allowEndTime: Bool
     let onSetDuration: (Int) -> Void
     let onSetEndTime: (Int, Int, Bool) -> Void
 
@@ -790,10 +897,12 @@ private struct TimeSetupSheet: View {
 
     init(maxMinutes: Int,
          isRunning: Bool,
+         allowEndTime: Bool,
          onSetDuration: @escaping (Int) -> Void,
          onSetEndTime: @escaping (Int, Int, Bool) -> Void) {
         self.maxMinutes = maxMinutes
         self.isRunning = isRunning
+        self.allowEndTime = allowEndTime
         self.onSetDuration = onSetDuration
         self.onSetEndTime = onSetEndTime
         // Under kørsel kan varigheden ikke ændres, kun sluttidspunktet
@@ -834,7 +943,7 @@ private struct TimeSetupSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                if !isRunning {
+                if !isRunning && allowEndTime {
                     Picker("Type", selection: $kind) {
                         ForEach(Kind.allCases) { Text($0.rawValue).tag($0) }
                     }

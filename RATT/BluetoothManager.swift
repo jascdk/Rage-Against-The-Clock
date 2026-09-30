@@ -50,11 +50,15 @@ final class BluetoothManager: NSObject, ObservableObject {
     @Published private(set) var swapDisplays = false
     @Published private(set) var screensaverEnabled = true
     @Published private(set) var screensaverMinutes = 2
+    @Published private(set) var standbyAnimation = true   // prik der glider i standby
 
     var isConnected: Bool { connectionState == .connected }
 
     /// Firmwareopdatering over Bluetooth (OTA)
     let firmware = FirmwareUpdater()
+
+    /// Diagnostik-siden (signal, temperatur, MAC osv.)
+    let diagnostics = DiagnosticsModel()
 
     // MARK: - BLE
 
@@ -64,6 +68,8 @@ final class BluetoothManager: NSObject, ObservableObject {
     private let configUUID  = CBUUID(string: "6f8d0103-2b44-4c1c-a7f9-7d9d2f734301")
     private let otaDataUUID   = CBUUID(string: "6f8d0104-2b44-4c1c-a7f9-7d9d2f734301")
     private let otaStatusUUID = CBUUID(string: "6f8d0105-2b44-4c1c-a7f9-7d9d2f734301")
+    private let diagUUID      = CBUUID(string: "6f8d0106-2b44-4c1c-a7f9-7d9d2f734301")
+    private let infoUUID      = CBUUID(string: "6f8d0107-2b44-4c1c-a7f9-7d9d2f734301")
 
     private let savedDeviceKey = "savedPedalIdentifier"
     private let restoreID = "com.ratt.central"
@@ -76,6 +82,8 @@ final class BluetoothManager: NSObject, ObservableObject {
     private var configChar: CBCharacteristic?
     private var otaDataChar: CBCharacteristic?
     private var otaStatusChar: CBCharacteristic?
+    private var diagChar: CBCharacteristic?
+    private var infoChar: CBCharacteristic?
     private var handshakeDone = false
     private var hasFast = false
     private var hasConfig = false
@@ -89,6 +97,7 @@ final class BluetoothManager: NSObject, ObservableObject {
     override init() {
         super.init()
         firmware.transport = self
+        diagnostics.transport = self
         firmware.onVersionChange = { [weak self] in self?.objectWillChange.send() }
         // Er onboarding gennemført, startes Bluetooth med det samme (også ved state restoration)
         if UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
@@ -192,6 +201,8 @@ final class BluetoothManager: NSObject, ObservableObject {
         configChar = nil
         otaDataChar = nil
         otaStatusChar = nil
+        diagChar = nil
+        infoChar = nil
         handshakeDone = false
         hasFast = false
         hasConfig = false
@@ -232,6 +243,7 @@ final class BluetoothManager: NSObject, ObservableObject {
         if let t = json["t"] as? Int { update(\.remainingSeconds, t) }
         if let d = json["d"] as? Int { update(\.isTimerDone, d == 1) }
         hasFast = true
+        diagnostics.noteStatusUpdate()
         update(\.hasReceivedStatus, true)
         reconcileNotifications()
         reconcileLiveActivity()
@@ -258,6 +270,7 @@ final class BluetoothManager: NSObject, ObservableObject {
         if let v = json["swap"] as? Int { update(\.swapDisplays, v == 1) }
         if let v = json["scr"] as? Int { update(\.screensaverEnabled, v == 1) }
         if let v = json["scrm"] as? Int { update(\.screensaverMinutes, v) }
+        if let v = json["sb"] as? Int { update(\.standbyAnimation, v == 1) }
         if let v = json["ts"] as? Int, v == 0 { sendCurrentTime() }   // pedalen kender ikke klokken
         hasConfig = true
         reconcileNotifications()
@@ -322,6 +335,7 @@ extension BluetoothManager: CBCentralManagerDelegate {
             connectionState = .bluetoothOff
             firmware.linkLost()
             LiveActivityManager.shared.markDisconnected()
+            diagnostics.linkLost()
         case .unauthorized:
             connectionState = .unauthorized
         case .unsupported:
@@ -373,6 +387,7 @@ extension BluetoothManager: CBCentralManagerDelegate {
         connectionState = .searching
         firmware.linkLost()
         LiveActivityManager.shared.markDisconnected()
+        diagnostics.linkLost()
         central.connect(gone, options: nil)    // iOS genforbinder, så snart pedalen er i nærheden igen
     }
 }
@@ -384,7 +399,7 @@ extension BluetoothManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         if let error { print("⚠️ Service discovery: \(error.localizedDescription)"); return }
         guard let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) else { return }
-        peripheral.discoverCharacteristics([commandUUID, statusUUID, configUUID, otaDataUUID, otaStatusUUID], for: service)
+        peripheral.discoverCharacteristics([commandUUID, statusUUID, configUUID, otaDataUUID, otaStatusUUID, diagUUID, infoUUID], for: service)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
@@ -396,6 +411,8 @@ extension BluetoothManager: CBPeripheralDelegate {
             case configUUID:  configChar = c
             case otaDataUUID: otaDataChar = c
             case otaStatusUUID: otaStatusChar = c
+            case diagUUID: diagChar = c
+            case infoUUID: infoChar = c
             default: break
             }
         }
@@ -413,6 +430,7 @@ extension BluetoothManager: CBPeripheralDelegate {
         }
         forceNotificationReconcile = true
         connectionState = .connected
+        diagnostics.linkEstablished()
         startClockSync()                  // nu findes command-characteristic, så første sync går igennem
     }
 
@@ -423,8 +441,14 @@ extension BluetoothManager: CBPeripheralDelegate {
         case statusUUID: parseStatus(data)
         case configUUID: parseConfig(data)
         case otaStatusUUID: firmware.handleStatus(data)
+        case diagUUID: diagnostics.handleDiag(data)
+        case infoUUID: diagnostics.handleInfo(data)
         default: break
         }
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
+        if error == nil { diagnostics.handleRSSI(RSSI.intValue) }
     }
 
     func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
@@ -461,5 +485,35 @@ extension BluetoothManager: FirmwareTransport {
     func sendOtaData(_ data: Data) {
         guard let p = pedal, let c = otaDataChar else { return }
         p.writeValue(data, for: c, type: .withoutResponse)
+    }
+}
+
+// MARK: - DiagnosticsTransport (bruges af DiagnosticsModel)
+
+extension BluetoothManager: DiagnosticsTransport {
+
+    var hasDiagnostics: Bool { diagChar != nil && infoChar != nil }
+
+    var maxWriteLength: Int {
+        pedal?.maximumWriteValueLength(for: .withResponse) ?? 0
+    }
+
+    var peripheralShortID: String? {
+        pedal.map { String($0.identifier.uuidString.prefix(8)) }
+    }
+
+    func readDiagnosticValues() {
+        guard isConnected, let p = pedal, let c = diagChar else { return }
+        p.readValue(for: c)
+    }
+
+    func readDeviceInfo() {
+        guard isConnected, let p = pedal, let c = infoChar else { return }
+        p.readValue(for: c)
+    }
+
+    func readSignalStrength() {
+        guard isConnected else { return }
+        pedal?.readRSSI()
     }
 }
