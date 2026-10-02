@@ -48,7 +48,8 @@
 #include "esp_mac.h"
 #endif
 
-#define FW_VERSION "2.7.0"   // hæv ved hver ny udgivelse
+#define FW_VERSION "2.8.0"   // hæv ved hver ny udgivelse
+#define VERSION_SPLASH_MS 4000   // hvor længe versionsnummeret vises efter en opdatering
 #define STANDBY_STEP_MS 650      // standby: tid pr. skridt for prikken der glider hen over displayet
 #define STANDBY_BRIGHTNESS 2     // standby: højeste lysstyrke (0-7), så det er roligt at se på
 
@@ -187,6 +188,10 @@ bool otaShowPrep = false;          // viser "UP--" mens flash slettes
 uint32_t otaTotal = 0;             // forventet filstørrelse
 uint32_t otaReceived = 0;          // bytes skrevet til flash
 
+// ======= Versionsvisning efter opdatering =======
+bool versionSplashActive = false;
+uint32_t versionSplashStartMs = 0;
+
 // ======= Diagnostik =======
 float diagTempC = 0.0f;
 uint32_t diagHeap = 0, diagMinHeap = 0, diagLastMs = 0;
@@ -300,6 +305,55 @@ void renderDisplays(const uint8_t clockSegs[4], bool clockColon, const uint8_t t
   displayNeedsForceUpdate = false;   // ryd flaget, ellers virker cachen aldrig
 }
 
+// ============================================================
+//  Versionsvisning: første gang et nyt versionsnummer starter (efter OTA eller USB), vises det et øjeblik.
+//  "2.7.1" vises som cifre med decimalpunktum på timer-displayet, og ur-displayet viser "UEr".
+//  Lange versioner (mere end 4 cifre) ruller hen over displayet.
+// ============================================================
+static int buildVersionSegments(uint8_t* out, int maxN) {
+  int n = 0;
+  for (const char* c = FW_VERSION; *c && n < maxN; c++) {
+    if (*c >= '0' && *c <= '9') out[n++] = DIGITS[*c - '0'];
+    else if (*c == '.' && n > 0) out[n - 1] |= 0x80;          // decimalpunktum efter foregående ciffer
+  }
+  return n;
+}
+
+static void versionSplashSegments(uint8_t seg[4]) {
+  uint8_t v[16];
+  int n = buildVersionSegments(v, 16);
+  for (int i = 0; i < 4; i++) seg[i] = 0;
+  if (n <= 4) {
+    int off = 4 - n;                                          // højrejusteret: _ 2. 7. 1
+    for (int i = 0; i < n; i++) seg[off + i] = v[i];
+  } else {
+    int start = (int)((millis() - versionSplashStartMs) / 500UL) % (n + 4) - 3;
+    for (int i = 0; i < 4; i++) {
+      int k = start + i;
+      seg[i] = (k >= 0 && k < n) ? v[k] : 0;
+    }
+  }
+}
+
+static uint32_t versionSplashDurationMs() {
+  uint8_t v[16];
+  int n = buildVersionSegments(v, 16);
+  return n <= 4 ? (uint32_t)VERSION_SPLASH_MS : (uint32_t)(n + 4) * 500UL;
+}
+
+// Husker hvilken version der sidst blev startet. Er den ny, startes versionsvisningen.
+void checkVersionSplash() {
+  prefs.end();                                                // sikrer at navnerummet ikke allerede er åbent
+  prefs.begin("timer", false);
+  String last = prefs.getString("fwVer", "");
+  if (last != FW_VERSION) {
+    prefs.putString("fwVer", FW_VERSION);
+    versionSplashActive = true;
+    versionSplashStartMs = millis();
+  }
+  prefs.end();
+}
+
 // Standby: én decimalprik (bit 7) glider stille 0,1,2,3,2,1,0... hen over displayet
 static void standbySweep(uint8_t segs[4]) {
   static const uint8_t seq[6] = {0, 1, 2, 3, 2, 1};
@@ -308,6 +362,14 @@ static void standbySweep(uint8_t segs[4]) {
 }
 
 void prepareClockData() {
+  if (versionSplashActive) {                 // "UEr" ud for versionsnummeret
+    currentClockSegs[0] = 0;
+    currentClockSegs[1] = 0b00111110;        // U
+    currentClockSegs[2] = 0b01111001;        // E
+    currentClockSegs[3] = 0b01010000;        // r
+    currentClockColon = false;
+    return;
+  }
   if (screensaverActive && !clockAlwaysOn) {
     for (int i = 0; i < 4; i++) currentClockSegs[i] = 0;
     if (standbyAnim) standbySweep(currentClockSegs);
@@ -326,6 +388,11 @@ void prepareClockData() {
 }
 
 void prepareTimerData(long seconds) {
+  if (versionSplashActive) {
+    versionSplashSegments(currentTimerSegs);
+    currentTimerColon = false;
+    return;
+  }
   if (screensaverActive) {
     for (int i = 0; i < 4; i++) currentTimerSegs[i] = 0;
     if (standbyAnim) standbySweep(currentTimerSegs);
@@ -333,7 +400,7 @@ void prepareTimerData(long seconds) {
     return;
   }
   if (timerDone) {
-    currentTimerSegs[0] = 0b01111110;  // D
+    currentTimerSegs[0] = 0b01011110;  // d (uden den øverste venstre bjælke)
     currentTimerSegs[1] = 0b00111111;  // O
     currentTimerSegs[2] = 0b00110111;  // n
     currentTimerSegs[3] = 0b01111001;  // E
@@ -1164,6 +1231,7 @@ void initBle() {
 void setup() {
   Serial.begin(115200);
   loadPrefs();
+  checkVersionSplash();
   pinMode(FOOTSWITCH_PIN, INPUT_PULLUP);
 
 #if HAS_STATUS_LED
@@ -1305,6 +1373,12 @@ void loop() {
   if (now - diagLastMs >= 1000UL) {
     diagLastMs = now;
     diagUpdate();
+  }
+
+  // 7d. Versionsvisningen slutter af sig selv (eller når timeren startes)
+  if (versionSplashActive && ((now - versionSplashStartMs) >= versionSplashDurationMs() || timerRunning)) {
+    versionSplashActive = false;
+    displayNeedsForceUpdate = true;
   }
 
   // 8. Output
